@@ -23,6 +23,8 @@ For layout template you can use `{{ view }}` function to render child view. All 
 
 **NOTE**: Use `include` function to import instead of builtin `template` function to prevent errors.
 
+**NOTE**: In `Render`, you can load multiple partial views. The first `layouts` value must be the layout, and if the view has a partial and no layout, an empty string must be passed as the first argument.
+
 ### Builtin functions
 
 - `{{ view }}`: render child template in layout. If used in non-layout template generate error!
@@ -60,9 +62,8 @@ For layout template you can use `{{ view }}` function to render child view. All 
     {{ end }}
   </head>
   <body>
-    {{- require "site-header" . }}
-    {{- view }}
-    {{- include "@partials/sub/footer" }}
+    {{- require "site-header" . }} {{- view }} {{- include
+    "@partials/sub/footer" }}
   </body>
 </html>
 ```

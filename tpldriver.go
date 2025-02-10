@@ -89,14 +89,8 @@ func (engine *tplEngine) Load() error {
 	return nil
 }
 
-func (engine *tplEngine) Render(w io.Writer, view string, data interface{}, layouts ...string) error {
+func (engine *tplEngine) Render(w io.Writer, name string, data interface{}, layouts ...string) error {
 	var err error
-
-	// Resolve layout
-	layout := ""
-	if len(layouts) > 0 {
-		layout = layouts[0]
-	}
 
 	// Reload on development mode
 	if engine.option.Dev {
@@ -105,12 +99,32 @@ func (engine *tplEngine) Render(w io.Writer, view string, data interface{}, layo
 		}
 	}
 
-	// Normalize
-	view = toPath(view, engine.option.root, engine.option.extension)
-	layout = toPath(layout, engine.option.root, engine.option.extension)
-	viewNorm := toName(view, engine.option.root, engine.option.extension)
-	layoutNorm := toName(layout, engine.option.root, engine.option.extension)
-	key := viewNorm + ":" + layoutNorm
+	// Resolve and normalize view
+	view := toPath(name, engine.option.root, engine.option.extension)
+	viewId := toName(view, engine.option.root, engine.option.extension)
+
+	// Resolve and normalize layout and partials
+	layout := ""
+	layoutId := ""
+	partials := make([]string, 0)
+	partialsId := make([]string, 0)
+	if len(layouts) > 0 {
+		for i := range layouts {
+			if i == 0 {
+				layout = toPath(layouts[0], engine.option.root, engine.option.extension)
+				layoutId = toName(layout, engine.option.root, engine.option.extension)
+			} else if layouts[i] != "" {
+				name := toPath(layouts[i], engine.option.root, engine.option.extension)
+				id := toName(name, engine.option.root, engine.option.extension)
+				partials = append(partials, name)
+				partialsId = append(partialsId, id)
+			}
+		}
+
+	}
+
+	// Generate key
+	key := toKey(append([]string{viewId, layoutId}, partialsId...)...)
 
 	// Check partials render
 	if engine.partialRx != nil && engine.partialRx.MatchString(view) {
@@ -118,6 +132,11 @@ func (engine *tplEngine) Render(w io.Writer, view string, data interface{}, layo
 	}
 	if layout != "" && engine.partialRx != nil && engine.partialRx.MatchString(layout) {
 		return fmt.Errorf("%s partial cannot render directly", layout)
+	}
+	for _, partial := range partials {
+		if engine.partialRx != nil && engine.partialRx.MatchString(partial) {
+			return fmt.Errorf("%s partial already loaded globally", layout)
+		}
 	}
 
 	// Safe race condition
@@ -139,7 +158,7 @@ func (engine *tplEngine) Render(w io.Writer, view string, data interface{}, layo
 		} else if err != nil {
 			return err
 		} else {
-			_, err := tpl.New("view::" + viewNorm).Parse(string(raw))
+			_, err := tpl.New("view::" + viewId).Parse(string(raw))
 			if err != nil {
 				return err
 			}
@@ -152,7 +171,20 @@ func (engine *tplEngine) Render(w io.Writer, view string, data interface{}, layo
 			} else if err != nil {
 				return err
 			} else {
-				_, err := tpl.New("layout::" + layoutNorm).Parse(string(raw))
+				_, err := tpl.New("layout::" + layoutId).Parse(string(raw))
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		for i := range partials {
+			if raw, err := engine.fs.ReadFile(partials[i]); os.IsNotExist(err) {
+				return fmt.Errorf("%s partial template not found", partials[i])
+			} else if err != nil {
+				return err
+			} else {
+				_, err := tpl.New(partialsId[i]).Parse(string(raw))
 				if err != nil {
 					return err
 				}
@@ -173,23 +205,23 @@ func (engine *tplEngine) Render(w io.Writer, view string, data interface{}, layo
 
 	// Render
 	if layout == "" {
-		return tpl.ExecuteTemplate(w, "view::"+viewNorm, underlyingValue(data))
+		return tpl.ExecuteTemplate(w, "view::"+viewId, underlyingValue(data))
 	} else {
 		// Render child view to layout
 		var buf bytes.Buffer
-		err = tpl.ExecuteTemplate(&buf, "view::"+viewNorm, underlyingValue(data))
+		err = tpl.ExecuteTemplate(&buf, "view::"+viewId, underlyingValue(data))
 		if err != nil {
 			return err
 		}
 		viewPipe(tpl, buf.Bytes())
 
-		return tpl.ExecuteTemplate(w, "layout::"+layoutNorm, underlyingValue(data))
+		return tpl.ExecuteTemplate(w, "layout::"+layoutId, underlyingValue(data))
 	}
 }
 
-func (engine *tplEngine) Compile(name, layout string, data any) ([]byte, error) {
+func (engine *tplEngine) Compile(name, layout string, data any, partials ...string) ([]byte, error) {
 	var buf bytes.Buffer
-	err := engine.Render(&buf, name, data, layout)
+	err := engine.Render(&buf, name, data, append([]string{layout}, partials...)...)
 	if err != nil {
 		return nil, err
 	}

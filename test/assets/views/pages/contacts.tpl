@@ -1,6 +1,8 @@
 <section>
   <h1>Contact Page</h1>
   <p>Contact me at: xxx@yyy.zzz</p>
+  {{- include "contact-form" }}
+  {{- include "pages/contact/social" }}
 </section>
 {{- define "scripts"}}
 <script>

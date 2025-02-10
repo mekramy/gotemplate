@@ -31,7 +31,7 @@ func main() {
 	})
 
 	http.HandleFunc("/contact", func(w http.ResponseWriter, r *http.Request) {
-		if err := tpl.Render(w, "pages/contact", nil, "layout"); err != nil {
+		if err := tpl.Render(w, "pages/contacts", nil, "layout", "pages/contact/form", "pages/contact/social"); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 		}

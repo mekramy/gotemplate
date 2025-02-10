@@ -18,7 +18,7 @@ type Template interface {
 	Render(w io.Writer, view string, data interface{}, layouts ...string) error
 
 	// Compile compiles a template with the given name and layout and data.
-	Compile(name, layout string, data any) ([]byte, error)
+	Compile(name, layout string, data any, partials ...string) ([]byte, error)
 }
 
 // New creates a new Template instance with the provided filesystem and options.

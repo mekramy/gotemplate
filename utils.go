@@ -33,6 +33,19 @@ func toPath(path, root, ext string) string {
 	return normalizePath(root, path+ext)
 }
 
+// toKey generate key for views list
+func toKey(views ...string) string {
+	res := ""
+	for _, v := range views {
+		if res == "" && v != "" {
+			res = v
+		} else if v != "" {
+			res += ":" + v
+		}
+	}
+	return res
+}
+
 // underlyingValue get underlying value of context.
 func underlyingValue(v any) any {
 	switch val := v.(type) {
