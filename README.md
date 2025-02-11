@@ -86,11 +86,16 @@ func main() {
         panic(err)
     }
 
-    data := gotemplate.Ctx().Add("Title", "Hello, World!")
-    err = tpl.Render(os.Stdout, "pages/home", data, "layout")
-    if err != nil {
-        panic(err)
-    }
+
+    http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+      data := gotemplate.Ctx().Add("Title", "Hello, World!")
+      err = tpl.Render(w, "pages/home", data, "layout")
+      if err != nil {
+        // Render error page with no layout and two partial views
+        tpl.Render(w, "pages/errors", nil, "", "pages/err-partial/500", "pages/err-partial/contact")
+      }
+    })
+
 }
 ```
 
