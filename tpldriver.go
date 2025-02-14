@@ -22,30 +22,30 @@ type tplEngine struct {
 	mutex     sync.RWMutex
 }
 
-func (engine *tplEngine) Load() error {
+func (t *tplEngine) Load() error {
 	var err error
 
 	// Safe race condition
-	engine.mutex.Lock()
-	defer engine.mutex.Unlock()
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
 
 	// Initialize
-	engine.templates = make(map[string]*template.Template)
-	engine.base = template.New("").
-		Delims(engine.option.leftDelim, engine.option.rightDelim).
-		Funcs(engine.option.Pipes)
+	t.templates = make(map[string]*template.Template)
+	t.base = template.New("").
+		Delims(t.option.leftDelim, t.option.rightDelim).
+		Funcs(t.option.Pipes)
 
 	// Add built-in pipes
-	viewPipe(engine.base, nil)
-	existsPipe(engine.base)
-	includePipe(engine.base)
-	requirePipe(engine.base)
+	viewPipe(t.base, nil)
+	existsPipe(t.base)
+	includePipe(t.base)
+	requirePipe(t.base)
 
 	// Generate partial pattern
-	if engine.option.partials != "" {
-		engine.partialRx, err = regexp.Compile(extPattern(
-			engine.option.partials,
-			engine.option.extension,
+	if t.option.partials != "" {
+		t.partialRx, err = regexp.Compile(extPattern(
+			t.option.partials,
+			t.option.extension,
 		))
 		if err != nil {
 			return err
@@ -53,33 +53,33 @@ func (engine *tplEngine) Load() error {
 	}
 
 	// Read files from fs
-	files, err := engine.fs.Lookup(
-		engine.option.root,
-		extPattern("", engine.option.extension),
+	files, err := t.fs.Lookup(
+		t.option.root,
+		extPattern("", t.option.extension),
 	)
 	if err != nil {
 		return err
 	}
 
 	// Load partials
-	if engine.option.partials != "" {
+	if t.option.partials != "" {
 		for _, file := range files {
 			// Skip non partials
-			if !engine.partialRx.MatchString(file) {
+			if !t.partialRx.MatchString(file) {
 				continue
 			}
 
 			// Generate friendly name
-			name := toName(file, engine.option.partials, engine.option.extension)
+			name := toName(file, t.option.partials, t.option.extension)
 			name = "@partials/" + name
 
 			// Read file
-			content, err := engine.fs.ReadFile(file)
+			content, err := t.fs.ReadFile(file)
 			if err != nil {
 				return err
 			}
 
-			_, err = engine.base.New(name).Parse(string(content))
+			_, err = t.base.New(name).Parse(string(content))
 			if err != nil {
 				return err
 			}
@@ -89,19 +89,19 @@ func (engine *tplEngine) Load() error {
 	return nil
 }
 
-func (engine *tplEngine) Render(w io.Writer, name string, data interface{}, layouts ...string) error {
+func (t *tplEngine) Render(w io.Writer, name string, data interface{}, layouts ...string) error {
 	var err error
 
 	// Reload on development mode
-	if engine.option.Dev {
-		if err := engine.Load(); err != nil {
+	if t.option.Dev {
+		if err := t.Load(); err != nil {
 			return err
 		}
 	}
 
 	// Resolve and normalize view
-	view := toPath(name, engine.option.root, engine.option.extension)
-	viewId := toName(view, engine.option.root, engine.option.extension)
+	view := toPath(name, t.option.root, t.option.extension)
+	viewId := toName(view, t.option.root, t.option.extension)
 
 	// Resolve and normalize layout and partials
 	layout := ""
@@ -111,11 +111,11 @@ func (engine *tplEngine) Render(w io.Writer, name string, data interface{}, layo
 	if len(layouts) > 0 {
 		for i := range layouts {
 			if i == 0 {
-				layout = toPath(layouts[0], engine.option.root, engine.option.extension)
-				layoutId = toName(layout, engine.option.root, engine.option.extension)
+				layout = toPath(layouts[0], t.option.root, t.option.extension)
+				layoutId = toName(layout, t.option.root, t.option.extension)
 			} else if layouts[i] != "" {
-				name := toPath(layouts[i], engine.option.root, engine.option.extension)
-				id := toName(name, engine.option.root, engine.option.extension)
+				name := toPath(layouts[i], t.option.root, t.option.extension)
+				id := toName(name, t.option.root, t.option.extension)
 				partials = append(partials, name)
 				partialsId = append(partialsId, id)
 			}
@@ -127,33 +127,33 @@ func (engine *tplEngine) Render(w io.Writer, name string, data interface{}, layo
 	key := toKey(append([]string{viewId, layoutId}, partialsId...)...)
 
 	// Check partials render
-	if engine.partialRx != nil && engine.partialRx.MatchString(view) {
+	if t.partialRx != nil && t.partialRx.MatchString(view) {
 		return fmt.Errorf("%s partial cannot render directly", view)
 	}
-	if layout != "" && engine.partialRx != nil && engine.partialRx.MatchString(layout) {
+	if layout != "" && t.partialRx != nil && t.partialRx.MatchString(layout) {
 		return fmt.Errorf("%s partial cannot render directly", layout)
 	}
 	for _, partial := range partials {
-		if engine.partialRx != nil && engine.partialRx.MatchString(partial) {
+		if t.partialRx != nil && t.partialRx.MatchString(partial) {
 			return fmt.Errorf("%s partial already loaded globally", layout)
 		}
 	}
 
 	// Safe race condition
-	engine.mutex.RLock()
-	defer engine.mutex.RUnlock()
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
 
 	// Resolve Template
-	tpl, ok := engine.templates[key]
+	tpl, ok := t.templates[key]
 	if !ok {
 		// Clone from base engine
-		tpl, err = engine.base.Clone()
+		tpl, err = t.base.Clone()
 		if err != nil {
 			return err
 		}
 
 		// Read and parse view
-		if raw, err := engine.fs.ReadFile(view); os.IsNotExist(err) {
+		if raw, err := t.fs.ReadFile(view); os.IsNotExist(err) {
 			return fmt.Errorf("%s template not found", view)
 		} else if err != nil {
 			return err
@@ -166,7 +166,7 @@ func (engine *tplEngine) Render(w io.Writer, name string, data interface{}, layo
 
 		// Read and parse layout
 		if layout != "" {
-			if raw, err := engine.fs.ReadFile(layout); os.IsNotExist(err) {
+			if raw, err := t.fs.ReadFile(layout); os.IsNotExist(err) {
 				return fmt.Errorf("%s layout template not found", layout)
 			} else if err != nil {
 				return err
@@ -179,7 +179,7 @@ func (engine *tplEngine) Render(w io.Writer, name string, data interface{}, layo
 		}
 
 		for i := range partials {
-			if raw, err := engine.fs.ReadFile(partials[i]); os.IsNotExist(err) {
+			if raw, err := t.fs.ReadFile(partials[i]); os.IsNotExist(err) {
 				return fmt.Errorf("%s partial template not found", partials[i])
 			} else if err != nil {
 				return err
@@ -192,8 +192,8 @@ func (engine *tplEngine) Render(w io.Writer, name string, data interface{}, layo
 		}
 
 		// Store to cache
-		if !engine.option.Dev && engine.option.Cache {
-			engine.templates[key] = tpl
+		if !t.option.Dev && t.option.Cache {
+			t.templates[key] = tpl
 		}
 	}
 
@@ -219,9 +219,9 @@ func (engine *tplEngine) Render(w io.Writer, name string, data interface{}, layo
 	}
 }
 
-func (engine *tplEngine) Compile(name, layout string, data any, partials ...string) ([]byte, error) {
+func (t *tplEngine) Compile(name, layout string, data any, partials ...string) ([]byte, error) {
 	var buf bytes.Buffer
-	err := engine.Render(&buf, name, data, append([]string{layout}, partials...)...)
+	err := t.Render(&buf, name, data, append([]string{layout}, partials...)...)
 	if err != nil {
 		return nil, err
 	}
